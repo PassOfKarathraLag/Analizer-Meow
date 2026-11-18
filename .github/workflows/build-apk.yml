@@ -1,0 +1,41 @@
+name: Compilar APK
+
+# Se ejecuta solo, en los servidores de GitHub, cada vez que subas
+# cambios a "main" o lo lances manualmente desde la pestaña "Actions".
+# No necesitas Android Studio instalado para obtener el APK compilado.
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: gradle:8.9.0-jdk17   # Gradle y Java ya vienen instalados en esta imagen
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar las herramientas de Android (SDK)
+        run: |
+          apt-get update && apt-get install -y wget unzip
+          mkdir -p /opt/android-sdk/cmdline-tools
+          cd /opt/android-sdk/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest
+          echo "ANDROID_SDK_ROOT=/opt/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_HOME=/opt/android-sdk" >> $GITHUB_ENV
+          yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses --sdk_root=/opt/android-sdk > /dev/null
+          /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Compilar APK de depuración (debug)
+        run: gradle assembleDebug --no-daemon
+
+      - name: Subir el APK como resultado descargable
+        uses: actions/upload-artifact@v4
+        with:
+          name: analizer-meow-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
