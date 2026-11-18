@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_home"
+        android:icon="@android:drawable/ic_menu_compass"
+        android:title="Inicio" />
+    <item
+        android:id="@+id/nav_channels"
+        android:icon="@android:drawable/ic_menu_sort_by_size"
+        android:title="Canales" />
+    <item
+        android:id="@+id/nav_wifi"
+        android:icon="@android:drawable/ic_menu_view"
+        android:title="WiFi" />
+    <item
+        android:id="@+id/nav_optimize"
+        android:icon="@android:drawable/ic_menu_manage"
+        android:title="Optimizar" />
+</menu>

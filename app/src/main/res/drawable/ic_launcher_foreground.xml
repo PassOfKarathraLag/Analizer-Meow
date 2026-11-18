@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- orejas -->
+    <path android:fillColor="#FFFFFF" android:pathData="M36,32 L26,14 L46,26 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M72,32 L82,14 L62,26 Z" />
+    <!-- cabeza -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,26 C38,26 28,40 28,56 C28,72 40,84 54,84 C68,84 80,72 80,56 C80,40 70,26 54,26 Z" />
+    <!-- ondas wifi sobre la cabeza -->
+    <path
+        android:fillColor="#00BCD4"
+        android:pathData="M54,58 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+</vector>
