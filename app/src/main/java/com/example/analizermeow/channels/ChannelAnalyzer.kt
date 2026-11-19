@@ -38,9 +38,10 @@ class ChannelAnalyzer {
             val interferers = networks.filter { net ->
                 net.band == band && isOverlapping(ch, net.channel, band)
             }
-            val penalty: Int = interferers.sumOf { net ->
-                // señal más fuerte (RSSI más alto, menos negativo) interfiere más
-                when {
+            // señal más fuerte (RSSI más alto, menos negativo) interfiere más
+            var penalty = 0
+            for (net in interferers) {
+                penalty += when {
                     net.rssiDbm > -50 -> 3
                     net.rssiDbm > -70 -> 2
                     else -> 1
