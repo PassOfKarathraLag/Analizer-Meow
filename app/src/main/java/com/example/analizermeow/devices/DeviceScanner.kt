@@ -31,8 +31,10 @@ class DeviceScanner {
 
     enum class DeviceType { ROUTER, PHONE, LAPTOP_PC, TV_STREAMING, PRINTER, IOT_SMART_HOME, UNKNOWN }
 
-    suspend fun scanLocalSubnet(localIp: String, subnetPrefix: String = "192.168.1."): List<DiscoveredDevice> =
+    /** [localIp] es la IP de este mismo teléfono (ej. "192.168.1.105"); de ahí se calcula la subred a escanear */
+    suspend fun scanLocalSubnet(localIp: String): List<DiscoveredDevice> =
         withContext(Dispatchers.IO) {
+            val subnetPrefix = localIp.substringBeforeLast(".") + "."
             val arpTable = readArpTable()
             val jobs = (1..254).map { host ->
                 async {

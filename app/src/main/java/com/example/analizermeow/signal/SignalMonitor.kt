@@ -92,4 +92,18 @@ class SignalMonitor(context: Context) {
     }
 
     fun startScan(): Boolean = wifiManager.startScan()
+
+    /** IP de ESTE teléfono dentro de la red (ej. "192.168.1.105"), para saber qué subred escanear */
+    @Suppress("DEPRECATION")
+    fun deviceIp(): String? {
+        val ipInt = wifiManager.connectionInfo?.ipAddress ?: return null
+        if (ipInt == 0) return null
+        return String.format(
+            "%d.%d.%d.%d",
+            ipInt and 0xff,
+            (ipInt shr 8) and 0xff,
+            (ipInt shr 16) and 0xff,
+            (ipInt shr 24) and 0xff
+        )
+    }
 }

@@ -8,6 +8,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.analizermeow.channels.ChannelAnalyzer
+import com.example.analizermeow.databinding.ActivityMainBinding
 import com.example.analizermeow.devices.DeviceScanner
 import com.example.analizermeow.diagnostics.NetworkDiagnostics
 import com.example.analizermeow.security.SecurityChecker
@@ -16,15 +17,14 @@ import com.example.analizermeow.speedtest.SpeedTestManager
 import kotlinx.coroutines.launch
 
 /**
- * Punto de entrada. Aquí solo se conecta la lógica de cada módulo con las
- * 4 secciones equivalentes a tus capturas:
- *   Inicio (medidor %) | Canales (gráfica + estrellas) | WiFi (redes vecinas) | Optimizar (seguridad + fallas)
- *
- * El layout XML (activity_main.xml con Bottom/Tab navigation) se arma en
- * Android Studio con el editor visual; aquí dejamos la lógica para que no
- * dependas de generar XML completo a mano.
+ * Punto de entrada. Conecta las 4 pestañas (Inicio / Canales / WiFi / Optimizar)
+ * con la lógica real de cada módulo. Por ahora el resultado se muestra como
+ * texto simple en pantalla (placeholder_title / placeholder_subtitle);
+ * eso es lo que irás reemplazando por tarjetas y gráficas más adelante.
  */
 class MainActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityMainBinding
 
     private val requiredPermissions = arrayOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
@@ -41,9 +41,21 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
         signalMonitor = SignalMonitor(this)
+
+        binding.bottomNav.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_home -> loadHomeTab()
+                R.id.nav_channels -> loadChannelsTab()
+                R.id.nav_wifi -> loadWifiTab()
+                R.id.nav_optimize -> loadOptimizeTab()
+            }
+            true
+        }
+
         ensurePermissions()
     }
 
@@ -62,58 +74,107 @@ class MainActivity : AppCompatActivity() {
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 1001) loadHomeTab()
+        if (requestCode == 1001) {
+            val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            if (allGranted) {
+                loadHomeTab()
+            } else {
+                showText(
+                    "Faltan permisos",
+                    "Analizer Meow necesita el permiso de ubicación para poder ver las redes WiFi cercanas (es un requisito de Android, no se usa para rastrear tu ubicación)."
+                )
+            }
+        }
     }
 
-    /** Pestaña 1: Inicio — medidor de % de señal en vivo */
+    private fun showText(title: String, subtitle: String) {
+        binding.placeholderTitle.text = title
+        binding.placeholderSubtitle.text = subtitle
+    }
+
+    /** Pestaña 1: Inicio — medidor de % de señal */
     private fun loadHomeTab() {
+        showText("Analizer Meow", "Cargando señal...")
         lifecycleScope.launch {
             signalMonitor.startScan()
-            val network = signalMonitor.currentNetwork() ?: return@launch
+            val network = signalMonitor.currentNetwork()
+            if (network == null) {
+                showText("Sin conexión WiFi", "Conéctate a una red WiFi y vuelve a abrir esta pestaña.")
+                return@launch
+            }
             val percent = signalMonitor.dbmToPercent(network.rssiDbm)
-            // TODO: bind a tu vista circular (ej. un CircularProgressIndicator de Material)
-            // binding.signalPercent.text = "$percent%"
+            showText(
+                "$percent%",
+                "Conectado a \"${network.ssid}\"\nSeñal: ${network.rssiDbm} dBm · Canal ${network.channel}"
+            )
         }
     }
 
-    /** Pestaña 2: Canales — igual a tus capturas "Mega-5G-48B7" con estrellas */
+    /** Pestaña 2: Canales — calificación por estrellas y canal recomendado */
     private fun loadChannelsTab() {
+        showText("Canales", "Analizando canales cercanos...")
         lifecycleScope.launch {
-            val network = signalMonitor.currentNetwork() ?: return@launch
+            val network = signalMonitor.currentNetwork()
+            if (network == null) {
+                showText("Sin conexión WiFi", "Conéctate a una red WiFi para analizar canales.")
+                return@launch
+            }
             val nearby = signalMonitor.scanNearby()
             val report = channelAnalyzer.analyze(nearby, network.band, network.channel)
-            // TODO: pintar report.allScores como lista de estrellas, igual a las capturas
+            showText(
+                "Canal actual: ${report.currentChannel} (${report.currentStars}/10 ★)",
+                "Recomendado: ${report.recommended.joinToString(", ")}"
+            )
         }
     }
 
-    /** Pestaña 3: WiFi — lista de redes vecinas + gráfica tipo "montañas" */
+    /** Pestaña 3: WiFi — redes vecinas detectadas */
     private fun loadWifiTab() {
+        showText("Redes cercanas", "Buscando redes WiFi...")
         val nearby = signalMonitor.scanNearby()
-        // TODO: alimentar MPAndroidChart con (frecuencia, rssi) por cada red para la curva tipo campana
+        if (nearby.isEmpty()) {
+            showText("Redes cercanas", "No se detectaron redes. Intenta de nuevo en unos segundos.")
+            return
+        }
+        val resumen = nearby
+            .sortedByDescending { it.rssiDbm }
+            .take(6)
+            .joinToString("\n") { "${it.ssid.ifBlank { "(oculta)" }}: ${it.rssiDbm} dBm" }
+        showText("${nearby.size} redes detectadas", resumen)
     }
 
-    /** Pestaña 4 (la de estrella en tus capturas): Optimizar — seguridad + diagnóstico + dispositivos */
+    /** Pestaña 4: Optimizar — seguridad de tu red + diagnóstico + dispositivos conectados */
     private fun loadOptimizeTab() {
+        showText("Optimizar", "Revisando tu red...")
         lifecycleScope.launch {
-            val network = signalMonitor.currentNetwork() ?: return@launch
+            val network = signalMonitor.currentNetwork()
+            if (network == null) {
+                showText("Sin conexión WiFi", "Conéctate a una red WiFi para revisar su seguridad.")
+                return@launch
+            }
 
-            // Auditoría de seguridad de TU red (no de redes ajenas)
-            val nearbyMatch = signalMonitor.scanNearby().find { it.bssid == network.bssid }
+            val nearby = signalMonitor.scanNearby()
+            val nearbyMatch = nearby.find { it.bssid == network.bssid }
             val findings = securityChecker.audit(network.ssid, nearbyMatch?.security ?: "")
 
-            // Diagnóstico de "posibles fallas"
             val speed = speedTest.runFullTest("https://speed.hetzner.de/100KB.bin")
+            val report = channelAnalyzer.analyze(nearby, network.band, network.channel)
             val diag = diagnostics.diagnose(
                 rssiDbm = network.rssiDbm,
-                channelStars = channelAnalyzer.analyze(signalMonitor.scanNearby(), network.band, network.channel).currentStars,
+                channelStars = report.currentStars,
                 speed = speed,
-                reconnectsLastHour = 0 // TODO: contar desconexiones reales con un BroadcastReceiver de WifiManager
+                reconnectsLastHour = 0
             )
 
-            // Dispositivos conectados, identificados con OUI + hostname
-            val devices = deviceScanner.scanLocalSubnet(localIp = network.bssid)
+            val myIp = signalMonitor.deviceIp()
+            val deviceCount = if (myIp != null) deviceScanner.scanLocalSubnet(myIp).size else 0
 
-            // TODO: pintar findings, diag y devices en RecyclerViews de la pestaña "Optimizar"
+            val resumen = buildString {
+                append("Seguridad: ${findings.firstOrNull()?.title ?: "OK"}\n")
+                append("Posible falla: ${diag.firstOrNull()?.title ?: "Ninguna detectada"}\n")
+                append("Dispositivos conectados: $deviceCount")
+            }
+            showText("Resultado del análisis", resumen)
         }
     }
 }
