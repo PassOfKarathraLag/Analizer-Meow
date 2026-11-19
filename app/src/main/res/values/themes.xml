@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Tema base de Material Components; puedes personalizar colores más adelante -->
-    <style name="Theme.AnalizerMeow" parent="Theme.MaterialComponents.DayNight.NoActionBar" />
+    <style name="Theme.AnalizerMeow" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/meow_accent</item>
+        <item name="colorPrimaryVariant">@color/meow_accent_dim</item>
+        <item name="colorSecondary">@color/meow_accent</item>
+        <item name="colorSecondaryVariant">@color/meow_accent_dim</item>
+        <item name="colorSurface">@color/meow_surface</item>
+        <item name="colorOnSurface">@color/meow_text_primary</item>
+        <item name="android:windowBackground">@color/meow_background</item>
+        <item name="android:statusBarColor">@color/meow_header</item>
+    </style>
 </resources>

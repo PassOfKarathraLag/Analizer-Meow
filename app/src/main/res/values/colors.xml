@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="meow_background">#0B0F14</color>
+    <color name="meow_surface">#121A21</color>
+    <color name="meow_header">#0E3A42</color>
+    <color name="meow_header_light">#145561</color>
+    <color name="meow_accent">#26E1EC</color>
+    <color name="meow_accent_dim">#0F8A94</color>
+    <color name="meow_text_primary">#FFFFFF</color>
+    <color name="meow_text_secondary">#93B4BD</color>
+    <color name="meow_star_filled">#FFD54A</color>
+    <color name="meow_star_empty">#3A4A50</color>
+
+    <!-- nombres usados por bottom_nav_colors.xml, se mantienen como alias -->
+    <color name="meow_teal">#26E1EC</color>
+    <color name="meow_teal_dark">#0F8A94</color>
+</resources>
