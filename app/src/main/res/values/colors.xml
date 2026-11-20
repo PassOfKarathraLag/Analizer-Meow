@@ -10,6 +10,7 @@
     <color name="meow_text_secondary">#93B4BD</color>
     <color name="meow_star_filled">#FFD54A</color>
     <color name="meow_star_empty">#3A4A50</color>
+    <color name="meow_upload">#FF8A65</color>
 
     <!-- nombres usados por bottom_nav_colors.xml, se mantienen como alias -->
     <color name="meow_teal">#26E1EC</color>

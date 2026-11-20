@@ -3,6 +3,7 @@ package com.example.analizermeow.devices
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.net.InetAddress
 import java.net.NetworkInterface
@@ -35,40 +36,47 @@ class DeviceScanner {
     suspend fun scanLocalSubnet(localIp: String): List<DiscoveredDevice> =
         withContext(Dispatchers.IO) {
             val subnetPrefix = localIp.substringBeforeLast(".") + "."
-            val arpTable = readArpTable()
+
+            // 1) Primero se hace ping a toda la subred: esto es lo que hace que el
+            //    sistema operativo aprenda la MAC de cada dispositivo que responde.
             val jobs = (1..254).map { host ->
                 async {
                     val ip = "$subnetPrefix$host"
-                    pingAndIdentify(ip, arpTable)
+                    pingOnly(ip)?.let { rtt -> ip to rtt }
                 }
             }
-            jobs.awaitAll().filterNotNull()
+            val reachable = jobs.awaitAll().filterNotNull()
+
+            // 2) Se le da un respiro al sistema para que termine de anotar esas MACs
+            //    en su tabla ARP (si se lee de inmediato, casi siempre está vacía todavía).
+            delay(400)
+            val arpTable = readArpTable()
+
+            // 3) Recién ahora se identifica cada dispositivo, con la tabla ya actualizada.
+            reachable.map { (ip, rtt) -> identify(ip, rtt, arpTable) }
         }
 
-    private suspend fun pingAndIdentify(ip: String, arpTable: Map<String, String>): DiscoveredDevice? {
-        return try {
-            val start = System.currentTimeMillis()
-            val reachable = InetAddress.getByName(ip).isReachable(250)
-            if (!reachable) return null
-            val rtt = System.currentTimeMillis() - start
+    private fun pingOnly(ip: String): Long? = try {
+        val start = System.currentTimeMillis()
+        if (InetAddress.getByName(ip).isReachable(250)) System.currentTimeMillis() - start else null
+    } catch (_: Exception) {
+        null
+    }
 
-            val mac = arpTable[ip]
-            val vendor = mac?.let { OuiVendorLookup.vendorFor(it) }
-            val hostname = resolveHostnameSafe(ip)
-            val type = guessType(vendor, hostname, ip)
-
-            DiscoveredDevice(
-                ip = ip,
-                mac = mac,
-                vendor = vendor,
-                hostname = hostname,
-                guessedType = type,
-                isGateway = ip.endsWith(".1"),
-                responseTimeMs = rtt
-            )
-        } catch (_: Exception) {
-            null
-        }
+    private fun identify(ip: String, rtt: Long, arpTable: Map<String, String>): DiscoveredDevice {
+        val mac = arpTable[ip]
+        val vendor = mac?.let { OuiVendorLookup.vendorFor(it) }
+        val hostname = resolveHostnameSafe(ip)
+        val type = guessType(vendor, hostname, ip)
+        return DiscoveredDevice(
+            ip = ip,
+            mac = mac,
+            vendor = vendor,
+            hostname = hostname,
+            guessedType = type,
+            isGateway = ip.endsWith(".1"),
+            responseTimeMs = rtt
+        )
     }
 
     private fun resolveHostnameSafe(ip: String): String? = try {
@@ -101,11 +109,12 @@ class DeviceScanner {
         return when {
             ip.endsWith(".1") -> DeviceType.ROUTER
             "apple" in v && ("iphone" in h || "ipad" in h) -> DeviceType.PHONE
-            "samsung" in v || "xiaomi" in v || "huawei" in v -> DeviceType.PHONE
+            "samsung" in v || "xiaomi" in v || "huawei" in v || "htc" in v -> DeviceType.PHONE
             "roku" in v || "chromecast" in h || "firetv" in h || "tv" in h -> DeviceType.TV_STREAMING
             "hp" in v || "canon" in v || "epson" in v || "printer" in h -> DeviceType.PRINTER
-            "espressif" in v || "sonoff" in v || "tuya" in v -> DeviceType.IOT_SMART_HOME
-            "intel" in v || "dell" in v || "lenovo" in v -> DeviceType.LAPTOP_PC
+            "espressif" in v || "sonoff" in v || "tuya" in v ||
+                "philips hue" in v || "lifx" in v || "amazon" in v -> DeviceType.IOT_SMART_HOME
+            "intel" in v || "dell" in v || "lenovo" in v || "raspberry pi" in v -> DeviceType.LAPTOP_PC
             else -> DeviceType.UNKNOWN
         }
     }

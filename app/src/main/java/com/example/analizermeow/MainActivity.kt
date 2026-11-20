@@ -3,6 +3,7 @@ package com.example.analizermeow
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.TrafficStats
 import android.net.Uri
 import android.os.Bundle
 import android.transition.AutoTransition
@@ -29,6 +30,10 @@ import com.example.analizermeow.ui.ChannelAdapter
 import com.example.analizermeow.ui.DeviceAdapter
 import com.example.analizermeow.ui.NetworkAdapter
 import com.example.analizermeow.ui.NoiseChartHelper
+import com.example.analizermeow.ui.TrafficChartHelper
+import com.github.mikephil.charting.data.Entry
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -51,6 +56,7 @@ class MainActivity : AppCompatActivity() {
     private val deviceScanner = DeviceScanner()
     private val diagnostics = NetworkDiagnostics()
     private val securityChecker = SecurityChecker()
+    private var trafficJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -108,6 +114,20 @@ class MainActivity : AppCompatActivity() {
         binding.contentContainer.addView(view)
     }
 
+    /** Detiene la gráfica de tráfico en vivo (se usa al salir de Inicio, para no gastar batería de más) */
+    private fun stopTrafficMonitor() {
+        trafficJob?.cancel()
+        trafficJob = null
+    }
+
+    private fun signalAdvice(rssiDbm: Int): String = when {
+        rssiDbm >= -50 -> "Señal excelente: ideal para videollamadas, juegos en línea y 4K."
+        rssiDbm >= -60 -> "Señal buena: suficiente para la mayoría de usos cotidianos."
+        rssiDbm >= -70 -> "Señal aceptable: puede haber cortes ocasionales en video o juegos."
+        rssiDbm >= -80 -> "Señal débil: acércate al router o considera un repetidor."
+        else -> "Señal muy débil: es normal que la conexión se sienta lenta o inestable aquí."
+    }
+
     private fun openRouterConfig() {
         val ip = signalMonitor.deviceIp() ?: return
         val gateway = ip.substringBeforeLast(".") + ".1"
@@ -119,8 +139,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Pestaña 1: Inicio — medidor circular, prueba de velocidad y accesos rápidos */
+    /** Pestaña 1: Inicio — medidor circular, gráfica de tráfico en vivo, prueba de velocidad y accesos rápidos */
     private fun loadHomeTab() {
+        stopTrafficMonitor()
         val view = FragmentHomeBinding.inflate(layoutInflater, binding.contentContainer, false)
         swapContent(view.root)
 
@@ -152,11 +173,56 @@ class MainActivity : AppCompatActivity() {
             view.signalPercent.text = "$percent%"
             view.homeSsid.text = network.ssid.ifBlank { "(red oculta)" }
             view.homeDetail.text = "Señal: ${network.rssiDbm} dBm · Canal ${network.channel}"
+            view.homeSignalAdvice.text = signalAdvice(network.rssiDbm)
+        }
+
+        // Gráfica de tráfico en vivo (descarga/subida), como la de la pantalla de inicio del original.
+        TrafficChartHelper.setup(view.trafficChart)
+        trafficJob = lifecycleScope.launch {
+            var lastRx = TrafficStats.getTotalRxBytes()
+            var lastTx = TrafficStats.getTotalTxBytes()
+            if (lastRx < 0 || lastTx < 0) {
+                // Este dispositivo no expone el contador de tráfico; ocultamos la gráfica en vez de mostrar ceros falsos.
+                view.trafficChart.visibility = View.GONE
+                view.trafficDownloadLabel.visibility = View.GONE
+                view.trafficUploadLabel.visibility = View.GONE
+                return@launch
+            }
+            var lastTime = System.currentTimeMillis()
+            val downloadEntries = mutableListOf<Entry>()
+            val uploadEntries = mutableListOf<Entry>()
+            var x = 0f
+
+            while (true) {
+                delay(1000)
+                val rx = TrafficStats.getTotalRxBytes()
+                val tx = TrafficStats.getTotalTxBytes()
+                val now = System.currentTimeMillis()
+                val elapsedSec = ((now - lastTime).coerceAtLeast(1)) / 1000.0
+                val downKBps = ((rx - lastRx).coerceAtLeast(0) / 1024.0) / elapsedSec
+                val upKBps = ((tx - lastTx).coerceAtLeast(0) / 1024.0) / elapsedSec
+                lastRx = rx
+                lastTx = tx
+                lastTime = now
+
+                x += 1f
+                downloadEntries.add(Entry(x, downKBps.toFloat()))
+                uploadEntries.add(Entry(x, upKBps.toFloat()))
+                if (downloadEntries.size > 30) {
+                    downloadEntries.removeAt(0)
+                    uploadEntries.removeAt(0)
+                }
+
+                view.trafficDownloadLabel.text = "Descargar: %.1f KB/s".format(downKBps)
+                view.trafficUploadLabel.text = "Subir: %.1f KB/s".format(upKBps)
+                TrafficChartHelper.update(view.trafficChart, downloadEntries, uploadEntries)
+            }
         }
     }
 
     /** Pestaña 2: Canales — estrellas, con selector 2.4G/5G */
     private fun loadChannelsTab() {
+        stopTrafficMonitor()
         val view = FragmentChannelsBinding.inflate(layoutInflater, binding.contentContainer, false)
         swapContent(view.root)
         view.channelsList.layoutManager = LinearLayoutManager(this)
@@ -198,6 +264,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Pestaña 3: WiFi — gráfica de colinas + lista, con selector 2.4G/5G */
     private fun loadWifiTab() {
+        stopTrafficMonitor()
         val view = FragmentWifiBinding.inflate(layoutInflater, binding.contentContainer, false)
         swapContent(view.root)
         view.wifiList.layoutManager = LinearLayoutManager(this)
@@ -229,6 +296,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Pestaña 4: Optimizar — todas las fallas de seguridad/diagnóstico + lista real de dispositivos */
     private fun loadOptimizeTab() {
+        stopTrafficMonitor()
         val view = FragmentOptimizeBinding.inflate(layoutInflater, binding.contentContainer, false)
         swapContent(view.root)
         view.optimizeDevicesList.layoutManager = LinearLayoutManager(this)

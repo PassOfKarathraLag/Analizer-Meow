@@ -60,6 +60,15 @@
         android:layout_height="190dp"
         android:layout_marginBottom="10dp" />
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
+        android:text="Cada colina es una red cercana. Entre más se junten cerca de la tuya (resaltada en cian), más interferencia sufre tu conexión."
+        android:textColor="@color/meow_text_secondary"
+        android:textSize="12sp"
+        android:textStyle="italic" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/wifi_list"
         android:layout_width="match_parent"
