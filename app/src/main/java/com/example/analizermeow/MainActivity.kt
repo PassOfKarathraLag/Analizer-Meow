@@ -1,7 +1,9 @@
 package com.example.analizermeow
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import android.transition.AutoTransition
 import android.transition.TransitionManager
@@ -19,17 +21,19 @@ import com.example.analizermeow.databinding.FragmentOptimizeBinding
 import com.example.analizermeow.databinding.FragmentWifiBinding
 import com.example.analizermeow.devices.DeviceScanner
 import com.example.analizermeow.diagnostics.NetworkDiagnostics
+import com.example.analizermeow.router.RouterConfigHelper
 import com.example.analizermeow.security.SecurityChecker
 import com.example.analizermeow.signal.SignalMonitor
 import com.example.analizermeow.speedtest.SpeedTestManager
 import com.example.analizermeow.ui.ChannelAdapter
+import com.example.analizermeow.ui.DeviceAdapter
 import com.example.analizermeow.ui.NetworkAdapter
+import com.example.analizermeow.ui.NoiseChartHelper
 import kotlinx.coroutines.launch
 
 /**
- * Punto de entrada. Cada pestaña infla su propio layout (fragment_home,
- * fragment_channels, fragment_wifi, fragment_optimize) dentro de
- * content_container, con una transición de cruce (fundido) al cambiar.
+ * Punto de entrada. Cada pestaña infla su propio layout dentro de
+ * content_container, con una transición de fundido al cambiar.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -104,10 +108,37 @@ class MainActivity : AppCompatActivity() {
         binding.contentContainer.addView(view)
     }
 
-    /** Pestaña 1: Inicio — medidor circular animado */
+    private fun openRouterConfig() {
+        val ip = signalMonitor.deviceIp() ?: return
+        val gateway = ip.substringBeforeLast(".") + ".1"
+        val url = RouterConfigHelper.adminPanelUrl(gateway)
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (_: Exception) {
+            // Sin navegador disponible; no hacemos nada más.
+        }
+    }
+
+    /** Pestaña 1: Inicio — medidor circular, prueba de velocidad y accesos rápidos */
     private fun loadHomeTab() {
         val view = FragmentHomeBinding.inflate(layoutInflater, binding.contentContainer, false)
         swapContent(view.root)
+
+        view.btnGoSecurity.setOnClickListener { binding.bottomNav.selectedItemId = R.id.nav_optimize }
+        view.btnRouterConfig.setOnClickListener { openRouterConfig() }
+        view.btnSpeedTest.setOnClickListener {
+            view.speedResult.text = "Probando..."
+            lifecycleScope.launch {
+                val result = speedTest.runFullTest("https://speed.hetzner.de/100KB.bin")
+                view.speedResult.text = if (result.pingMs != null) {
+                    val download = result.downloadMbps?.let { " · Descarga: %.1f Mbps".format(it) } ?: ""
+                    "Ping: ${result.pingMs} ms$download"
+                } else {
+                    "No se pudo medir (revisa tu conexión a internet)"
+                }
+            }
+        }
+
         lifecycleScope.launch {
             signalMonitor.startScan()
             val network = signalMonitor.currentNetwork()
@@ -124,53 +155,102 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Pestaña 2: Canales — lista con estrellas */
+    /** Pestaña 2: Canales — estrellas, con selector 2.4G/5G */
     private fun loadChannelsTab() {
         val view = FragmentChannelsBinding.inflate(layoutInflater, binding.contentContainer, false)
         swapContent(view.root)
         view.channelsList.layoutManager = LinearLayoutManager(this)
-        lifecycleScope.launch {
-            val network = signalMonitor.currentNetwork()
-            if (network == null) {
-                view.channelsCurrent.text = "Sin conexión WiFi"
-                view.channelsRecommended.text = "Conéctate a una red WiFi para analizar canales."
-                return@launch
-            }
-            val nearby = signalMonitor.scanNearby()
-            val report = channelAnalyzer.analyze(nearby, network.band, network.channel)
-            view.channelsCurrent.text = "Canal actual: ${report.currentChannel} (${report.currentStars}/10 ★)"
-            view.channelsRecommended.text = "Recomendado: ${report.recommended.joinToString(", ")}"
-            view.channelsList.adapter = ChannelAdapter(report.allScores, report.currentChannel, report.recommended)
+
+        val network = signalMonitor.currentNetwork()
+        if (network == null) {
+            view.channelsCurrent.text = "Sin conexión WiFi"
+            view.channelsRecommended.text = "Conéctate a una red WiFi para analizar canales."
+            return
         }
+
+        val nearby = signalMonitor.scanNearby()
+
+        fun render(band: SignalMonitor.Band) {
+            val isBand24 = band == SignalMonitor.Band.GHZ_2_4
+            view.channelsTab24.setTextColor(
+                ContextCompat.getColor(this, if (isBand24) R.color.meow_text_primary else R.color.meow_text_secondary)
+            )
+            view.channelsTab5.setTextColor(
+                ContextCompat.getColor(this, if (isBand24) R.color.meow_text_secondary else R.color.meow_text_primary)
+            )
+
+            val channelForBand = if (band == network.band) network.channel else -1
+            val report = channelAnalyzer.analyze(nearby, band, channelForBand)
+            view.channelsCurrent.text = if (channelForBand != -1) {
+                "Canal actual: ${report.currentChannel} (${report.currentStars}/10 ★)"
+            } else {
+                "Viendo banda ${if (isBand24) "2.4G" else "5G"}"
+            }
+            view.channelsRecommended.text = "Recomendado: ${report.recommended.joinToString(", ")}"
+            view.channelsList.adapter = ChannelAdapter(report.allScores, channelForBand, report.recommended)
+        }
+
+        view.channelsTab24.setOnClickListener { render(SignalMonitor.Band.GHZ_2_4) }
+        view.channelsTab5.setOnClickListener { render(SignalMonitor.Band.GHZ_5) }
+
+        render(network.band)
     }
 
-    /** Pestaña 3: WiFi — lista de redes con barra de señal */
+    /** Pestaña 3: WiFi — gráfica de colinas + lista, con selector 2.4G/5G */
     private fun loadWifiTab() {
         val view = FragmentWifiBinding.inflate(layoutInflater, binding.contentContainer, false)
         swapContent(view.root)
         view.wifiList.layoutManager = LinearLayoutManager(this)
-        val nearby = signalMonitor.scanNearby().sortedByDescending { it.rssiDbm }
-        view.wifiHeader.text = if (nearby.isEmpty()) "Sin redes detectadas" else "${nearby.size} redes detectadas"
-        view.wifiList.adapter = NetworkAdapter(nearby) { rssi -> signalMonitor.dbmToPercent(rssi) }
+
+        val nearby = signalMonitor.scanNearby()
+        val currentNet = signalMonitor.currentNetwork()
+        val initialBand = currentNet?.band ?: SignalMonitor.Band.GHZ_2_4
+
+        fun render(band: SignalMonitor.Band) {
+            val isBand24 = band == SignalMonitor.Band.GHZ_2_4
+            view.wifiTab24.setTextColor(
+                ContextCompat.getColor(this, if (isBand24) R.color.meow_text_primary else R.color.meow_text_secondary)
+            )
+            view.wifiTab5.setTextColor(
+                ContextCompat.getColor(this, if (isBand24) R.color.meow_text_secondary else R.color.meow_text_primary)
+            )
+
+            val filtered = nearby.filter { it.band == band }.sortedByDescending { it.rssiDbm }
+            view.wifiHeader.text = if (filtered.isEmpty()) "Sin redes en esta banda" else "${filtered.size} redes detectadas"
+            view.wifiList.adapter = NetworkAdapter(filtered) { rssi -> signalMonitor.dbmToPercent(rssi) }
+            NoiseChartHelper.render(view.wifiChart, nearby, band, currentNet?.bssid)
+        }
+
+        view.wifiTab24.setOnClickListener { render(SignalMonitor.Band.GHZ_2_4) }
+        view.wifiTab5.setOnClickListener { render(SignalMonitor.Band.GHZ_5) }
+
+        render(initialBand)
     }
 
-    /** Pestaña 4: Optimizar — tarjetas de seguridad, fallas y dispositivos */
+    /** Pestaña 4: Optimizar — todas las fallas de seguridad/diagnóstico + lista real de dispositivos */
     private fun loadOptimizeTab() {
         val view = FragmentOptimizeBinding.inflate(layoutInflater, binding.contentContainer, false)
         swapContent(view.root)
+        view.optimizeDevicesList.layoutManager = LinearLayoutManager(this)
+        view.optimizeDevicesList.isNestedScrollingEnabled = false
+
         lifecycleScope.launch {
             val network = signalMonitor.currentNetwork()
             if (network == null) {
                 view.optimizeSecurity.text = "Conéctate a una red WiFi para revisar su seguridad."
                 view.optimizeDiagnosis.text = "—"
-                view.optimizeDevices.text = "—"
+                view.optimizeDevicesStatus.text = "—"
                 return@launch
             }
 
             val nearby = signalMonitor.scanNearby()
             val nearbyMatch = nearby.find { it.bssid == network.bssid }
             val findings = securityChecker.audit(network.ssid, nearbyMatch?.security ?: "")
-            view.optimizeSecurity.text = findings.firstOrNull()?.let { "${it.title}\n${it.detail}" } ?: "Todo en orden."
+            view.optimizeSecurity.text = if (findings.isEmpty()) {
+                "Todo en orden."
+            } else {
+                findings.joinToString("\n\n") { "${it.title}\n${it.detail}\n${it.howToFix}" }
+            }
 
             val speed = speedTest.runFullTest("https://speed.hetzner.de/100KB.bin")
             val report = channelAnalyzer.analyze(nearby, network.band, network.channel)
@@ -180,12 +260,13 @@ class MainActivity : AppCompatActivity() {
                 speed = speed,
                 reconnectsLastHour = 0
             )
-            view.optimizeDiagnosis.text =
-                diag.firstOrNull()?.let { "${it.title}\n${it.explanation}" } ?: "Ninguna detectada."
+            view.optimizeDiagnosis.text = diag.joinToString("\n\n") { "${it.title}\n${it.explanation}\n${it.suggestion}" }
 
+            view.optimizeDevicesStatus.text = "Buscando dispositivos en tu red..."
             val myIp = signalMonitor.deviceIp()
-            val deviceCount = if (myIp != null) deviceScanner.scanLocalSubnet(myIp).size else 0
-            view.optimizeDevices.text = "$deviceCount dispositivos en tu red."
+            val devices = if (myIp != null) deviceScanner.scanLocalSubnet(myIp) else emptyList()
+            view.optimizeDevicesStatus.text = "${devices.size} dispositivos encontrados"
+            view.optimizeDevicesList.adapter = DeviceAdapter(devices.sortedBy { it.ip })
         }
     }
 }

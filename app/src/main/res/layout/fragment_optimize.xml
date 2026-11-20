@@ -58,7 +58,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="🛠️ Posible falla"
+                    android:text="🛠️ Posibles fallas"
                     android:textColor="@color/meow_text_primary"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -92,13 +92,18 @@
                     android:textSize="16sp"
                     android:textStyle="bold" />
                 <TextView
-                    android:id="@+id/optimize_devices"
+                    android:id="@+id/optimize_devices_status"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="Revisando..."
+                    android:layout_marginTop="4dp"
+                    android:text="Buscando..."
                     android:textColor="@color/meow_text_secondary"
-                    android:textSize="14sp" />
+                    android:textSize="13sp" />
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/optimize_devices_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

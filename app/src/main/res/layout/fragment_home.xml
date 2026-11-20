@@ -89,6 +89,55 @@
                     android:textColor="@color/meow_text_secondary"
                     android:textSize="14sp" />
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_speed_test"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="Probar velocidad"
+                    android:textColor="@color/meow_accent"
+                    app:strokeColor="@color/meow_accent_dim" />
+
+                <TextView
+                    android:id="@+id/speed_result"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center"
+                    android:text=""
+                    android:textColor="@color/meow_text_secondary"
+                    android:textSize="13sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_go_security"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:text="Seguridad"
+                        android:textColor="@color/meow_accent"
+                        app:strokeColor="@color/meow_accent_dim" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_router_config"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:text="Router"
+                        android:textColor="@color/meow_accent"
+                        app:strokeColor="@color/meow_accent_dim" />
+                </LinearLayout>
+
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
